@@ -78,6 +78,7 @@ function renderLogin() {
         <button class="btn prominent" data-act="saveCreds">Speichern</button>
       </div>` : `
       <button class="btn prominent" data-act="login">Mit Strava verbinden</button>
+      <p class="hint">Zeigt Strava danach „Bad Request“, stimmt die <b>Authorization Callback Domain</b> der API-App nicht: Sie muss exakt <b>${esc(location.hostname)}</b> lauten (ohne https://, ohne Pfad). Client-ID: ${esc(c.clientId)}.</p>
       <button class="btn link" data-act="editCreds">Zugangsdaten ändern</button>`}
       ${S.info ? `<p class="hint">${esc(S.info)}</p>` : ''}
     </div>`;
