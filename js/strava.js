@@ -63,6 +63,19 @@ export const Auth = {
 
   logout() { Store.remove('token'); },
 
+  /// Übernahme-Code: Zugangsdaten + Token als Base64, um eine Anmeldung aus Safari in die
+  /// Home-Bildschirm-App zu bringen (die hat auf iOS einen eigenen, getrennten Speicher).
+  exportHandover() {
+    const c = this.cfg, t = this.token; if (!t) return null;
+    return btoa(unescape(encodeURIComponent(JSON.stringify({ v: 1, clientId: c.clientId, clientSecret: c.clientSecret, token: t }))));
+  },
+  importHandover(code) {
+    let j; try { j = JSON.parse(decodeURIComponent(escape(atob(code.trim())))); } catch { throw new Error('Übernahme-Code ungültig.'); }
+    if (!j.token?.refresh_token || !j.clientId) throw new Error('Übernahme-Code unvollständig.');
+    Store.set('cfg', { ...this.cfg, clientId: j.clientId, clientSecret: j.clientSecret, grantedScopes: SCOPES });
+    Store.set('token', j.token);
+  },
+
   async tokenRequest(params) {
     const c = this.cfg;
     const body = new URLSearchParams({ client_id: c.clientId, client_secret: c.clientSecret, ...params });

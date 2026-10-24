@@ -63,7 +63,7 @@ function render() {
 
 function renderLogin() {
   document.querySelectorAll('.tab').forEach(t => t.hidden = t.id !== 'tab-login');
-  const c = Auth.cfg;
+  const c = Auth.cfg, standalone = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
   $('#tab-login').innerHTML = `
     <div class="login">
       <div class="logo">${komLogo(56)}</div>
@@ -76,8 +76,11 @@ function renderLogin() {
         <input id="cid" placeholder="Client-ID" inputmode="numeric" value="${esc(c.clientId || '')}">
         <input id="csec" placeholder="Client Secret" value="${esc(c.clientSecret || '')}">
         <button class="btn prominent" data-act="saveCreds">Speichern</button>
+        <p class="hint" style="margin-top:12px">Oder: in Safari schon verbunden? Dort im Profil „Übernahme-Code kopieren“ und hier einfügen.</p>
+        <input id="handover" placeholder="Übernahme-Code einfügen"><button class="btn" data-act="importHandover">Anmeldung übernehmen</button>
       </div>` : `
       <button class="btn prominent" data-act="login">Mit Strava verbinden</button>
+      ${standalone ? `<div class="card"><div class="section">Anmeldung klappt hier nicht?</div><p class="hint">Diese Home-Bildschirm-App hat einen eigenen Speicher. Wenn Strava dich per E-Mail-Link anmeldet, landet die Anmeldung in Safari. Lösung: in <b>Safari</b> die gleiche Adresse öffnen, dort verbinden, im Profil „Übernahme-Code kopieren“ und hier einfügen.</p><input id="handover" placeholder="Übernahme-Code einfügen"><button class="btn" data-act="importHandover">Anmeldung übernehmen</button></div>` : ''}
       <p class="hint">Zeigt Strava danach „Bad Request“, stimmt die <b>Authorization Callback Domain</b> der API-App nicht: Sie muss exakt <b>${esc(location.hostname)}</b> lauten (ohne https://, ohne Pfad). Client-ID: ${esc(c.clientId)}.</p>
       <button class="btn link" data-act="editCreds">Zugangsdaten ändern</button>`}
       ${S.info ? `<p class="hint">${esc(S.info)}</p>` : ''}
@@ -361,6 +364,7 @@ function renderProfile() {
     <label class="statrow"><span>Rückweg</span><select class="sel" data-setting="returnMode">${RETURN_MODES.map(x => `<option value="${x[0]}" ${st.returnMode === x[0] ? 'selected' : ''}>${x[1]}</option>`).join('')}</select></label></div>`;
   html += `<div class="card"><div class="section">Daten</div><div class="tiles three">${tile('Segmente', String(Object.keys(S.segments).length), null, `${Object.values(S.segments).filter(Seg.hasRecords.bind(Seg)).length} mit KOM`)}${tile('Routen', String(Object.keys(S.routes).length), null, `${Object.values(S.routes).filter(r => r.loaded).length} geladen`)}${tile('Fahrten', String(Object.keys(S.activities).length), null, `${Object.values(S.activities).filter(a => a.segmentIds).length} mit Segmenten`)}</div>
     <div class="statrow"><span>Explore-Endpoint</span><span class="mono">${st.exploreAvailable == null ? 'ungetestet' : st.exploreAvailable ? 'verfügbar' : 'gesperrt'}</span></div>
+    <button class="btn" data-act="copyHandover">Übernahme-Code kopieren (für Home-Bildschirm-App)</button><p class="hint">Damit lässt sich diese Strava-Anmeldung in die Home-Bildschirm-App übertragen: dort auf dem Startbildschirm einfügen. Der Code enthält dein Strava-Token – nicht weitergeben.</p>
     <button class="btn" data-act="clearCache">Cache leeren</button><button class="btn" data-act="logout">Strava trennen</button><button class="btn link small" data-act="editCreds">Zugangsdaten ändern</button><p class="hint">SegmentRouter Web · Daten bleiben in diesem Browser.</p></div>`;
   $('#tab-profile').innerHTML = html;
 }
@@ -410,6 +414,13 @@ async function scheduleReminder(at) {
 let sheetHtml = null;
 const actions = {
   clearError() { S.error = null; render(); },
+  importHandover() { try { Auth.importHandover($('#handover').value); S.info = 'Anmeldung übernommen.'; S.requestLocation(); render(); } catch (e) { S.error = e.message; render(); } },
+  async copyHandover() {
+    const code = Auth.exportHandover(); if (!code) { S.error = 'Nicht verbunden.'; render(); return; }
+    try { await navigator.clipboard.writeText(code); S.info = 'Übernahme-Code kopiert – in der Home-Bildschirm-App auf dem Startbildschirm einfügen.'; }
+    catch { prompt('Übernahme-Code (kopieren):', code); }
+    render();
+  },
   saveCreds() { Auth.saveCredentials($('#cid').value, $('#csec').value); render(); },
   editCreds() { const c = Auth.cfg; Auth.saveCredentials('', ''); S.info = c.clientId ? `Bisherige Client-ID: ${c.clientId}` : null; render(); },
   login() { Auth.login(); },
