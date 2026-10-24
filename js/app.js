@@ -89,79 +89,96 @@ function renderLogin() {
 
 function komLogo(size) { return `<svg width="${size}" height="${size}" viewBox="0 0 100 100"><rect width="100" height="100" rx="22" fill="${ACCENT}"/><path d="M7 78 L36 41 L47 53 L63 29 L93 78 Z" fill="#fff"/><path d="M63 29 L93 78 L63 78 Z" fill="#ffe2d4"/><path d="M55 26 L55 22 L58 14 L61 21 L63 12 L65 21 L68 14 L71 22 L71 26 Z" fill="#fff"/><text x="50" y="94" text-anchor="middle" font-family="-apple-system,Helvetica,Arial" font-weight="700" font-size="15" fill="#fff">KOM</text></svg>`; }
 
-// ---------- Tab: Touren (Karte) ----------
-function renderMapTab() {
-  const m = mapFor('map-main');
-  const mode = S.settings.mapMode, rides = Object.values(S.activities), routes = Object.values(S.routes);
-  m.layers.clearLayers();
-  // Alle Touren der Ebene: Linie + anklickbarer Startpunkt (bleibt bei jedem Zoom sichtbar).
-  const pool = mode === 'ridden' ? rides : routes, col = mode === 'ridden' ? ACCENT : PLANNED;
-  for (const t of pool) {
-    if (S.selectedTour === t.id || S.routeFilter === t.id) continue;
-    const c = Seg.coords({ polyline: t.polyline, start: [0, 0], end: [0, 0] }); if (c.length <= 2) continue;
-    L.polyline(c, mode === 'ridden' ? { color: col, weight: 2, opacity: 0.35, interactive: false } : { color: col, weight: 2, opacity: 0.7, dashArray: '5 4', interactive: false }).addTo(m.layers);
-    L.circleMarker(c[0], { radius: 5, color: '#121212', weight: 1, fillColor: col, fillOpacity: 0.9 })
-      .on('click', () => mode === 'ridden' ? S.selectTour(t.id) : S.selectRoute(t.id)).bindTooltip(t.name, { direction: 'top', opacity: 0.9 }).addTo(m.layers);
-  }
-  if (S.context) {
-    const { coords } = S.contextTrack();
-    if (coords.length > 1) {
-      L.polyline(coords, { color: S.selectedTour != null ? ACCENT : PLANNED, weight: 4, interactive: false }).addTo(m.layers);
-      directionArrows(m, coords, 16, '#fff', 10);
-      L.marker(coords[0], { icon: numIcon('S', '#eee', '#121212', ACCENT), interactive: false }).addTo(m.layers);
-      L.marker(coords[coords.length - 1], { icon: numIcon('Z', '#eee', '#121212', ACCENT), interactive: false }).addTo(m.layers);
-    }
-    S.contextSegments.forEach((s, i) => {
-      const f = S.feasibility(s), c = f.hasChance ? Fmt.chance(f.score) : '#2a2a2a';
-      if (f.hasChance) L.polyline(Seg.coords(s), { color: c, weight: 6, lineCap: 'round', interactive: false }).addTo(m.layers);
-      L.marker(s.start, { icon: numIcon(i + 1, c, f.hasChance ? '#121212' : '#eee', S.selected.has(s.id) ? '#ffd60a' : (f.hasChance ? '#121212' : ACCENT)) }).on('click', () => go('seg/' + s.id)).addTo(m.layers);
-    });
-  }
-  userMarker(m);
-  if (!m._framed) { m._framed = true; if (S.location) m.setView(S.location, 10); setTimeout(() => m.invalidateSize(), 50); }
-  // Nach dem Laden von Routen/Touren einmal auf alle zoomen (sonst bleibt der Ausschnitt beim Standort).
-  if (m._fitAll) { m._fitAll = false; const pts = (mode === 'ridden' ? rides : routes).flatMap(t => { const c = Seg.coords({ polyline: t.polyline, start: [0, 0], end: [0, 0] }); return c.length > 2 ? c.filter((_, i) => i % 10 === 0) : []; }); if (pts.length) setTimeout(() => { m.invalidateSize(); fitTo(m, pts); }, 60); }
-  // Bei Wechsel der Tour/Route auf deren Ausdehnung zoomen.
-  const ck = S.contextKey;
-  if (ck !== m._ctxKey) { m._ctxKey = ck; if (ck) { const { coords } = S.contextTrack(); if (coords.length > 1) setTimeout(() => { m.invalidateSize(); fitTo(m, coords); }, 60); } }
-  const empty = mode === 'planned' ? !routes.length : !rides.length;
-  const name = S.contextName;
-  $('#map-top').innerHTML = `<div class="seg-ctl"><button class="${mode === 'planned' ? 'on' : ''}" data-act="mapMode" data-arg="planned">Geplante Routen</button><button class="${mode === 'ridden' ? 'on' : ''}" data-act="mapMode" data-arg="ridden">Gefahrene Touren</button></div>
-    <div class="map-btns"><button class="iconbtn" data-act="styleCycle" title="Kartenstil">▦</button><button class="iconbtn" data-act="locate" title="Standort">◎</button><button class="iconbtn" data-act="fitAll" title="Alle Touren">⤢</button><button class="iconbtn" data-act="tourList" title="Liste">☰</button></div>`;
-  let panel = '';
-  if (empty) panel = `<div class="chooser"><div class="section">${mode === 'planned' ? 'Geplante Routen' : 'Gefahrene Touren'}</div><p class="hint">${mode === 'planned' ? 'Lädt die Liste deiner bei Strava gespeicherten Routen (1–2 Calls). Segmente je Route beim Antippen.' : 'Lädt deine Fahrten mit Track (200 je Call, keine Efforts). Segmente je Tour beim Antippen.'}</p>
-    <button class="btn prominent" data-act="${mode === 'planned' ? 'loadRoutes' : 'loadActivityMap'}">${mode === 'planned' ? 'Geplante Routen laden' : 'Gefahrene Touren laden'}</button>
-    <button class="btn link" data-act="mapMode" data-arg="${mode === 'planned' ? 'ridden' : 'planned'}">Stattdessen ${mode === 'planned' ? 'gefahrene Touren' : 'geplante Routen'}</button>${S.info ? `<p class="hint">${esc(S.info)}</p>` : ''}</div>`;
-  else if (name) {
-    const segs = S.contextSegments, unridden = segs.filter(s => !Seg.ridden(s)).length, ctx = S.context;
-    const stats = ctx.kind === 'tour' ? `${Fmt.date(S.activities[ctx.id].date)} · ${Fmt.km(S.activities[ctx.id].distance)}` : `geplant · ${Fmt.km(S.routes[ctx.id].distance)} · ${Fmt.hm(S.routes[ctx.id].elevationGain)}`;
-    const numbered = segs.map((s, i) => [i + 1, s, S.feasibility(s)]), any = numbered.some(x => x[2].hasChance);
-    const ordered = any ? numbered.sort((a, b) => (a[2].hasChance ? 1 - a[2].score : 2) - (b[2].hasChance ? 1 - b[2].score : 2)) : numbered;
-    panel = `<div class="ctxhead"><div><div class="title">${esc(name)}</div><div class="mono muted">${stats} · ${segs.length} Segmente · ${unridden} ungefahren</div></div>
-      <button class="iconbtn" data-act="go" data-arg="segments" title="Liste">≡</button><button class="iconbtn" data-act="selectAll" title="Alle zur Route">＋</button><button class="iconbtn" data-act="clearContext" title="Schließen">✕</button></div>
-      ${S.contextMissingRecords ? `<button class="btn prominent" data-act="loadRecords">KOMs laden für ${Math.min(40, S.contextMissingRecords)} Segmente → Chancen anzeigen</button>` : ''}
-      <div class="chips">${ordered.map(([n, s, f]) => `<span class="chip ${S.selected.has(s.id) ? 'sel' : ''}"><button data-act="toggle" data-arg="${s.id}">${S.selected.has(s.id) ? '●' : '○'}</button><button data-act="go" data-arg="seg/${s.id}"><i style="background:${f.hasChance ? Fmt.chance(f.score) : LINE}"></i>${n}. ${esc(s.name)}${f.hasChance ? ` <b style="color:${Fmt.chance(f.score)}">${Math.round(f.score * 100)} %</b>` : ''}${Seg.knownRank(s) ? ` <b class="rank">#${Seg.knownRank(s)}</b>` : ''}${s.starred ? ' ★' : ''}</button></span>`).join('') || '<span class="hint">Keine befahrbaren Segmente auf dieser Tour.</span>'}</div>`;
-  } else panel = `<div class="hint">${mode === 'planned' ? `${routes.length} geplante Routen` : `${rides.length} gefahrene Touren`} · Punkt antippen, ⤢ zeigt alle, ☰ öffnet die Liste.</div>${S.info ? `<div class="hint">${esc(S.info)}</div>` : ''}`;
-  $('#map-panel').innerHTML = panel;
-  if (!m._tapBound) { m._tapBound = true; m.on('click', e => handleMapTap([e.latlng.lat, e.latlng.lng], m)); }
-  m.off('moveend'); m.on('moveend', () => {}); 
+// ---------- Tab: Touren (Liste zuerst, Karte als Vorschau der gewählten Tour) ----------
+const TOUR_RADII = [25, 50, 100, 200, 0];
+let tourQuery = '', tourLimit = 60;
+function trackOf(t) { const c = Seg.coords({ polyline: t.polyline, start: [0, 0], end: [0, 0] }); return c.length > 2 ? c : null; }
+/// Kleinster Abstand des Standorts zur Strecke (jeder 4. Punkt reicht).
+function distToTrack(t) {
+  if (!S.location) return null; const c = trackOf(t); if (!c) return null;
+  if (t._dcache && t._dcache.loc === S.location) return t._dcache.d;
+  const d = Geo.minDistanceM(S.location, c.filter((_, i) => i % 4 === 0));
+  t._dcache = { loc: S.location, d }; return d;
 }
-function handleMapTap(c, m) {
-  const px = m.latLngToContainerPoint(c), p2 = m.containerPointToLatLng([px.x + 22, px.y]); const tol = Geo.distanceM(c, [p2.lat, p2.lng]);
-  if (S.context) { const hit = S.contextSegments.map(s => [s, Geo.minDistanceM(c, Seg.coords(s))]).filter(x => x[1] <= tol).sort((a, b) => a[1] - b[1])[0]; if (hit) { go('seg/' + hit[0].id); return; } }
-  const pool = S.settings.mapMode === 'ridden' ? Object.values(S.activities) : Object.values(S.routes);
-  const best = pool.map(t => [t, Geo.minDistanceM(c, Seg.coords({ polyline: t.polyline, start: [0, 0], end: [0, 0] }))]).filter(x => x[1] <= tol).sort((a, b) => a[1] - b[1])[0];
-  if (best) { S.settings.mapMode === 'ridden' ? S.selectTour(best[0].id) : S.selectRoute(best[0].id); } else S.clearContext();
+/// Mini-Vorschau der Strecke als SVG.
+function trackSvg(t, color) {
+  const c = trackOf(t); if (!c) return '<svg class="mini" viewBox="0 0 64 40"></svg>';
+  const b = Geo.bounds(c), cosLat = Math.cos(b[0][0] * Math.PI / 180);
+  const w = Math.max(1e-6, (b[1][1] - b[0][1]) * cosLat), h = Math.max(1e-6, b[1][0] - b[0][0]), sc = Math.min(56 / w, 32 / h);
+  const pts = c.filter((_, i) => i % Math.max(1, Math.floor(c.length / 80)) === 0).map(p => `${(4 + (p[1] - b[0][1]) * cosLat * sc + (56 - w * sc) / 2).toFixed(1)},${(36 - (p[0] - b[0][0]) * sc - (32 - h * sc) / 2).toFixed(1)}`);
+  return `<svg class="mini" viewBox="0 0 64 40"><polyline points="${pts.join(' ')}" fill="none" stroke="${color}" stroke-width="1.6" stroke-linejoin="round"/><circle cx="${pts[0].split(',')[0]}" cy="${pts[0].split(',')[1]}" r="2" fill="${color}"/></svg>`;
+}
+
+function renderMapTab() {
+  const mode = S.settings.mapMode, radius = S.settings.tourRadiusKm ?? 100;
+  const pool = mode === 'ridden' ? Object.values(S.activities) : Object.values(S.routes), col = mode === 'ridden' ? ACCENT : PLANNED;
+  const mapEl = $('#map-main'); mapEl.style.display = S.context ? 'block' : 'none';
+  // Kopf: Standort, Umkreis, Ebene
+  $('#map-top').innerHTML = `<div class="tourhead">
+    <div class="locline"><span class="locdot ${S.location ? 'on' : ''}"></span><span>${S.location ? 'Standort aktiv' : 'Kein Standort'}</span>
+      <button class="btn link small" data-act="locate">${S.location ? 'aktualisieren' : 'freigeben'}</button><span class="right"></span>
+      <select class="sel" data-setting="tourRadiusKm">${TOUR_RADII.map(r => `<option value="${r}" ${radius === r ? 'selected' : ''}>${r ? `Umkreis ${r} km` : 'Überall'}</option>`).join('')}</select></div>
+    <div class="seg-ctl full"><button class="${mode === 'planned' ? 'on' : ''}" data-act="mapMode" data-arg="planned">Geplante Routen${Object.keys(S.routes).length ? ` · ${Object.keys(S.routes).length}` : ''}</button><button class="${mode === 'ridden' ? 'on' : ''}" data-act="mapMode" data-arg="ridden">Gefahrene Touren${Object.keys(S.activities).length ? ` · ${Object.keys(S.activities).length}` : ''}</button></div></div>`;
+
+  if (S.context) { drawContextMap(); $('#map-panel').innerHTML = contextPanel(); return; }
+
+  // Liste im Umkreis, nächste zuerst
+  let items = pool.map(t => ({ t, d: distToTrack(t) }));
+  if (S.location && radius > 0) items = items.filter(x => x.d != null && x.d <= radius * 1000);
+  if (tourQuery) items = items.filter(x => x.t.name.toLowerCase().includes(tourQuery.toLowerCase()));
+  items.sort((a, b) => (a.d ?? 1e12) - (b.d ?? 1e12) || (b.t.date || 0) - (a.t.date || 0));
+  const shown = items.slice(0, tourLimit);
+  let html = '';
+  if (!pool.length) html = `<div class="card"><div class="section">${mode === 'planned' ? 'Geplante Routen' : 'Gefahrene Touren'}</div><p class="hint">${mode === 'planned' ? 'Lädt die Liste deiner bei Strava gespeicherten Routen (1–2 Calls).' : 'Lädt deine Fahrten mit Track (200 je Call).'}</p><button class="btn prominent" data-act="${mode === 'planned' ? 'loadRoutes' : 'loadActivityMap'}">${mode === 'planned' ? 'Geplante Routen laden' : 'Gefahrene Touren laden'}</button></div>`;
+  else {
+    html += `<div class="listbar"><input class="search" placeholder="Suchen…" value="${esc(tourQuery)}" data-set="tourQuery"><span class="mono muted">${items.length}${S.location && radius ? ` im Umkreis` : ''}</span><button class="iconbtn small" data-act="${mode === 'planned' ? 'loadRoutes' : 'loadActivityMap'}" title="Aktualisieren">↻</button></div>`;
+    if (!S.location && radius) html += '<p class="hint">Ohne Standort werden alle angezeigt. Oben „freigeben“ tippen, dann gilt der Umkreis.</p>';
+    html += '<div class="tourlist">' + shown.map(({ t, d }) => {
+      const loaded = mode === 'ridden' ? !!t.segmentIds : !!t.loaded;
+      const meta = mode === 'ridden' ? `${Fmt.date(t.date)} · ${Fmt.km(t.distance)} · ${Fmt.hm(t.elevationGain)}` : `${Fmt.km(t.distance)} · ${Fmt.hm(t.elevationGain)}`;
+      return `<button class="tourrow" data-act="${mode === 'ridden' ? 'selectTour' : 'selectRoute'}" data-arg="${t.id}">${trackSvg(t, col)}<span class="tourbody"><span class="name">${esc(t.name)}</span><span class="mono muted">${meta}${loaded ? ` · ${(t.segmentIds || []).length} Seg.` : ''}</span></span><span class="tourdist mono">${d != null ? Fmt.kmShort(d) : ''}</span></button>`;
+    }).join('') + '</div>';
+    if (items.length > shown.length) html += `<button class="btn link" data-act="moreTours">${items.length - shown.length} weitere anzeigen</button>`;
+    if (!items.length) html += `<p class="hint">Nichts im Umkreis von ${radius} km. Umkreis oben vergrößern.</p>`;
+  }
+  if (S.info) html += `<p class="hint">${esc(S.info)}</p>`;
+  $('#map-panel').innerHTML = html;
+}
+
+/// Karte nur für die gewählte Tour: Strecke, Fahrtrichtung, Segmente in Chance-Farbe.
+function drawContextMap() {
+  const m = mapFor('map-main'); m.layers.clearLayers();
+  const { coords } = S.contextTrack();
+  if (coords.length > 1) {
+    L.polyline(coords, { color: S.selectedTour != null ? ACCENT : PLANNED, weight: 4, interactive: false }).addTo(m.layers);
+    directionArrows(m, coords, 16, '#fff', 10);
+    L.marker(coords[0], { icon: numIcon('S', '#eee', '#121212', ACCENT), interactive: false }).addTo(m.layers);
+    L.marker(coords[coords.length - 1], { icon: numIcon('Z', '#eee', '#121212', ACCENT), interactive: false }).addTo(m.layers);
+  }
+  S.contextSegments.forEach((s, i) => {
+    const f = S.feasibility(s), c = f.hasChance ? Fmt.chance(f.score) : '#2a2a2a';
+    if (f.hasChance) L.polyline(Seg.coords(s), { color: c, weight: 6, lineCap: 'round', interactive: false }).addTo(m.layers);
+    L.marker(s.start, { icon: numIcon(i + 1, c, f.hasChance ? '#121212' : '#eee', S.selected.has(s.id) ? '#ffd60a' : (f.hasChance ? '#121212' : ACCENT)) }).on('click', () => go('seg/' + s.id)).addTo(m.layers);
+  });
+  userMarker(m);
+  const ck = S.contextKey;
+  if (ck !== m._ctxKey) { m._ctxKey = ck; if (coords.length > 1) setTimeout(() => { m.invalidateSize(); fitTo(m, coords); }, 60); }
+  if (!m._tapBound) { m._tapBound = true; m.on('click', e => { const c = [e.latlng.lat, e.latlng.lng]; const px = m.latLngToContainerPoint(c), p2 = m.containerPointToLatLng([px.x + 22, px.y]); const tol = Geo.distanceM(c, [p2.lat, p2.lng]); const hit = S.contextSegments.map(s => [s, Geo.minDistanceM(c, Seg.coords(s))]).filter(x => x[1] <= tol).sort((a, b) => a[1] - b[1])[0]; if (hit) go('seg/' + hit[0].id); }); }
+}
+
+function contextPanel() {
+  const name = S.contextName, segs = S.contextSegments, unridden = segs.filter(s => !Seg.ridden(s)).length, ctx = S.context;
+  const stats = ctx.kind === 'tour' ? `${Fmt.date(S.activities[ctx.id].date)} · ${Fmt.km(S.activities[ctx.id].distance)}` : `geplant · ${Fmt.km(S.routes[ctx.id].distance)} · ${Fmt.hm(S.routes[ctx.id].elevationGain)}`;
+  const numbered = segs.map((s, i) => [i + 1, s, S.feasibility(s)]), any = numbered.some(x => x[2].hasChance);
+  const ordered = any ? numbered.sort((a, b) => (a[2].hasChance ? 1 - a[2].score : 2) - (b[2].hasChance ? 1 - b[2].score : 2)) : numbered;
+  return `<div class="ctxhead"><button class="iconbtn" data-act="clearContext" title="Zurück zur Liste">‹</button><div><div class="title">${esc(name)}</div><div class="mono muted">${stats} · ${segs.length} Segmente · ${unridden} ungefahren</div></div>
+    <button class="iconbtn" data-act="selectAll" title="Alle zur Route">＋</button></div>
+    ${S.contextMissingRecords ? `<button class="btn prominent" data-act="loadRecords">KOMs laden für ${Math.min(40, S.contextMissingRecords)} Segmente → Chancen anzeigen</button>` : ''}
+    <button class="btn" data-act="go" data-arg="segments">Segmentliste mit Rückstand, Chance und Wind</button>
+    <div class="chips">${ordered.map(([n, s, f]) => `<span class="chip ${S.selected.has(s.id) ? 'sel' : ''}"><button data-act="toggle" data-arg="${s.id}">${S.selected.has(s.id) ? '●' : '○'}</button><button data-act="go" data-arg="seg/${s.id}"><i style="background:${f.hasChance ? Fmt.chance(f.score) : LINE}"></i>${n}. ${esc(s.name)}${f.hasChance ? ` <b style="color:${Fmt.chance(f.score)}">${Math.round(f.score * 100)} %</b>` : ''}${Seg.knownRank(s) ? ` <b class="rank">#${Seg.knownRank(s)}</b>` : ''}${s.starred ? ' ★' : ''}</button></span>`).join('') || '<span class="hint">Keine befahrbaren Segmente auf dieser Tour.</span>'}</div>
+    ${S.info ? `<p class="hint">${esc(S.info)}</p>` : ''}`;
 }
 function frameContext() { const m = maps['map-main']; if (!m) return; const { coords } = S.contextTrack(); if (coords.length > 1) fitTo(m, coords); }
-
-function tourListSheet() {
-  const mode = S.settings.mapMode;
-  const items = mode === 'planned'
-    ? Object.values(S.routes).sort((a, b) => a.name.localeCompare(b.name)).map(r => `<button class="row" data-act="selectRoute" data-arg="${r.id}"><span class="dot" style="color:${r.loaded ? PLANNED : MUTED}">${r.loaded ? '●' : '◌'}</span><span><div>${esc(r.name)}</div><div class="mono muted">${Fmt.km(r.distance)} · ${Fmt.hm(r.elevationGain)}${r.loaded ? ` · ${r.segmentIds.length} Seg.` : ''}</div></span></button>`)
-    : Object.values(S.activities).sort((a, b) => (b.date || 0) - (a.date || 0)).map(a => `<button class="row" data-act="selectTour" data-arg="${a.id}"><span class="dot" style="color:${a.segmentIds ? ACCENT : MUTED}">${a.segmentIds ? '●' : '◌'}</span><span><div>${esc(a.name)}</div><div class="mono muted">${Fmt.date(a.date)} · ${Fmt.km(a.distance)} · ${Fmt.hm(a.elevationGain)}${a.segmentIds ? ` · ${a.segmentIds.length} Seg.` : ''}</div></span></button>`);
-  return `<div class="sheet"><div class="sheethead"><b>${mode === 'planned' ? 'Geplante Routen' : 'Gefahrene Touren'}</b><button class="btn small" data-act="${mode === 'planned' ? 'loadRoutes' : 'loadActivityMap'}">Laden</button><button class="iconbtn" data-act="closeSheet">✕</button></div><div class="list">${items.join('') || '<p class="hint">Noch nichts geladen.</p>'}</div></div>`;
-}
 
 // ---------- Tab: Segmente ----------
 function renderSegments() {
@@ -436,16 +453,14 @@ const actions = {
   logout() { S.logout(); },
   go(h) { go(h); },
   closeOverlay() { closeOverlay(); },
-  mapMode(m) { S.setSetting('mapMode', m); if ((m === 'planned' && S.selectedTour != null) || (m === 'ridden' && S.routeFilter != null)) S.clearContext(); const mm = maps['map-main']; if (mm) mm._framed = false; },
+  mapMode(m) { tourLimit = 60; S.setSetting('mapMode', m); if (S.context) S.clearContext(); },
   styleCycle() { const i = MAP_STYLES.findIndex(x => x[0] === S.settings.mapStyle); S.setSetting('mapStyle', MAP_STYLES[(i + 1) % MAP_STYLES.length][0]); },
-  locate() { S.requestLocation(); const m = maps['map-main']; if (m && S.location) m.setView(S.location, 11); },
-  tourList() { sheetHtml = tourListSheet(); showSheet(); },
-  fitAll() { const m = maps['map-main']; if (m) { m._fitAll = true; S.clearContext(); } },
-  closeSheet() { sheetHtml = null; showSheet(); },
-  loadRoutes() { S.loadRouteList().then(() => { sheetHtml = sheetHtml && tourListSheet(); showSheet(); if (maps['map-main']) { maps['map-main']._fitAll = true; render(); } }); },
-  loadActivityMap() { S.loadActivityMap().then(() => { sheetHtml = sheetHtml && tourListSheet(); showSheet(); if (maps['map-main']) { maps['map-main']._fitAll = true; render(); } }); },
-  selectRoute(id) { sheetHtml = null; showSheet(); S.selectRoute(String(id)); setTimeout(frameContext, 100); },
-  selectTour(id) { sheetHtml = null; showSheet(); S.selectTour(Number(id)); setTimeout(frameContext, 100); },
+  locate() { S.requestLocation(); },
+  moreTours() { tourLimit += 100; render(); },
+  loadRoutes() { S.loadRouteList(); },
+  loadActivityMap() { S.loadActivityMap(); },
+  selectRoute(id) { S.selectRoute(String(id)); },
+  selectTour(id) { S.selectTour(Number(id)); },
   clearContext() { S.clearContext(); },
   selectAll() { for (const s of S.contextSegments) if (!S.selected.has(s.id)) S.toggle(s.id); },
   toggle(id) { S.toggle(Number(id)); },
@@ -478,10 +493,12 @@ document.addEventListener('click', e => {
   const d = el.closest('details.menu'); if (d && el.tagName === 'BUTTON') d.open = false;
   const fn = actions[el.dataset.act]; if (fn) { e.preventDefault(); fn(el.dataset.arg); }
 });
+document.addEventListener('input', e => { if (e.target.dataset.set === 'tourQuery') { tourQuery = e.target.value; tourLimit = 60; const sel = e.target.selectionStart; render(); const el = $('.search'); if (el) { el.focus(); el.setSelectionRange(sel, sel); } } });
 document.addEventListener('change', e => {
   const el = e.target;
   if (el.dataset.setting) { const v = el.value; S.setSetting(el.dataset.setting, isNaN(Number(v)) || el.dataset.setting === 'brouterProfile' ? v : Number(v)); return; }
-  if (el.dataset.set === 'sort') { S.sort = el.value; render(); }
+  if (el.dataset.set === 'tourQuery') { tourQuery = el.value; tourLimit = 60; render(); }
+  else if (el.dataset.set === 'sort') { S.sort = el.value; render(); }
   else if (el.dataset.set === 'rideDate') { const d = new Date(el.value); if (!isNaN(d)) S.setRideDate(d); }
   else if (el.dataset.set === 'limit') { S.sync.setLimit(Number(el.value)); render(); }
   else if (el.dataset.set === 'remind') { wahoo.remind = el.checked; render(); }

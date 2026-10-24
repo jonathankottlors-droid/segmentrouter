@@ -15,7 +15,7 @@ export const RADIUS_OPTIONS = [5, 10, 20, 30, 50, 100, 0];
 export const MAP_STYLES = [['topo', 'Topo (Relief + Höhenlinien)'], ['standard', 'Standard'], ['satellite', 'Satellit']];
 
 const DEFAULTS = { radiusKm: 20, top10Percent: 6, pessimismPct: Config.defaultPessimismPct, riderKg: 0, bikeKg: Config.defaultBikeKg, avgSpeedKmh: 0,
-  returnMode: 'roundTrip', brouterProfile: 'fastbike', mapMode: 'planned', mapStyle: 'topo', activitiesPage: 1, athleteId: 0, exploreAvailable: null };
+  returnMode: 'roundTrip', brouterProfile: 'fastbike', mapMode: 'planned', mapStyle: 'topo', tourRadiusKm: 100, activitiesPage: 1, athleteId: 0, exploreAvailable: null };
 
 function nextFullHour() { const d = new Date(Date.now() + 3600e3); d.setMinutes(0, 0, 0); return d; }
 
