@@ -112,6 +112,8 @@ function renderMapTab() {
   }
   userMarker(m);
   if (!m._framed) { m._framed = true; if (S.location) m.setView(S.location, 10); setTimeout(() => m.invalidateSize(), 50); }
+  // Nach dem Laden von Routen/Touren einmal auf alle zoomen (sonst bleibt der Ausschnitt beim Standort).
+  if (m._fitAll) { m._fitAll = false; const pts = (mode === 'ridden' ? rides : routes).flatMap(t => { const c = Seg.coords({ polyline: t.polyline, start: [0, 0], end: [0, 0] }); return c.length > 2 ? c.filter((_, i) => i % 10 === 0) : []; }); if (pts.length) setTimeout(() => { m.invalidateSize(); fitTo(m, pts); }, 60); }
   // Bei Wechsel der Tour/Route auf deren Ausdehnung zoomen.
   const ck = S.contextKey;
   if (ck !== m._ctxKey) { m._ctxKey = ck; if (ck) { const { coords } = S.contextTrack(); if (coords.length > 1) setTimeout(() => { m.invalidateSize(); fitTo(m, coords); }, 60); } }
@@ -132,7 +134,7 @@ function renderMapTab() {
       <button class="iconbtn" data-act="go" data-arg="segments" title="Liste">≡</button><button class="iconbtn" data-act="selectAll" title="Alle zur Route">＋</button><button class="iconbtn" data-act="clearContext" title="Schließen">✕</button></div>
       ${S.contextMissingRecords ? `<button class="btn prominent" data-act="loadRecords">KOMs laden für ${Math.min(40, S.contextMissingRecords)} Segmente → Chancen anzeigen</button>` : ''}
       <div class="chips">${ordered.map(([n, s, f]) => `<span class="chip ${S.selected.has(s.id) ? 'sel' : ''}"><button data-act="toggle" data-arg="${s.id}">${S.selected.has(s.id) ? '●' : '○'}</button><button data-act="go" data-arg="seg/${s.id}"><i style="background:${f.hasChance ? Fmt.chance(f.score) : LINE}"></i>${n}. ${esc(s.name)}${f.hasChance ? ` <b style="color:${Fmt.chance(f.score)}">${Math.round(f.score * 100)} %</b>` : ''}${Seg.knownRank(s) ? ` <b class="rank">#${Seg.knownRank(s)}</b>` : ''}${s.starred ? ' ★' : ''}</button></span>`).join('') || '<span class="hint">Keine befahrbaren Segmente auf dieser Tour.</span>'}</div>`;
-  } else panel = `<div class="hint">${mode === 'planned' ? `${routes.length} geplante Routen` : `${rides.length} gefahrene Touren`} · Tour antippen oder Liste öffnen. ${esc(S.info || '')}</div>`;
+  } else panel = `<div class="hint">${mode === 'planned' ? `${routes.length} geplante Routen` : `${rides.length} gefahrene Touren`} · Tour antippen oder Liste öffnen.</div>${S.info ? `<div class="hint">${esc(S.info)}</div>` : ''}`;
   $('#map-panel').innerHTML = panel;
   if (!m._tapBound) { m._tapBound = true; m.on('click', e => handleMapTap([e.latlng.lat, e.latlng.lng], m)); }
   m.off('moveend'); m.on('moveend', () => {}); 
@@ -432,8 +434,8 @@ const actions = {
   locate() { S.requestLocation(); const m = maps['map-main']; if (m && S.location) m.setView(S.location, 11); },
   tourList() { sheetHtml = tourListSheet(); showSheet(); },
   closeSheet() { sheetHtml = null; showSheet(); },
-  loadRoutes() { S.loadRouteList().then(() => { sheetHtml = sheetHtml && tourListSheet(); showSheet(); }); },
-  loadActivityMap() { S.loadActivityMap().then(() => { sheetHtml = sheetHtml && tourListSheet(); showSheet(); }); },
+  loadRoutes() { S.loadRouteList().then(() => { sheetHtml = sheetHtml && tourListSheet(); showSheet(); if (maps['map-main']) { maps['map-main']._fitAll = true; render(); } }); },
+  loadActivityMap() { S.loadActivityMap().then(() => { sheetHtml = sheetHtml && tourListSheet(); showSheet(); if (maps['map-main']) { maps['map-main']._fitAll = true; render(); } }); },
   selectRoute(id) { sheetHtml = null; showSheet(); S.selectRoute(Number(id)); setTimeout(frameContext, 100); },
   selectTour(id) { sheetHtml = null; showSheet(); S.selectTour(Number(id)); setTimeout(frameContext, 100); },
   clearContext() { S.clearContext(); },

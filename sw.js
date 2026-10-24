@@ -1,5 +1,5 @@
 // Offline-Hülle: App-Dateien cachen (Netz zuerst, Cache als Rückfall). VERSION bei jedem Update erhöhen.
-const VERSION = 'v4';
+const VERSION = 'v5';
 const FILES = ['./', './index.html', './css/app.css', './js/app.js', './js/state.js', './js/model.js', './js/strava.js', './js/store.js', './js/wind.js', './js/routing.js', './js/sync.js', './manifest.webmanifest'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
