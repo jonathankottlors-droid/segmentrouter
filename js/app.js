@@ -19,7 +19,7 @@ const TILES = {
 const maps = {}; window.maps = maps;
 function mapFor(id) {
   if (maps[id]) { applyTiles(maps[id]); return maps[id]; }
-  const m = L.map(id, { zoomControl: false, attributionControl: true, zoomAnimation: id !== 'map-detail' });
+  const m = L.map(id, { zoomControl: false, attributionControl: true, zoomAnimation: id !== 'map-detail', preferCanvas: true });
   L.control.zoom({ position: 'bottomright' }).addTo(m);
   m.layers = L.layerGroup().addTo(m);
   m.setView([48.1, 11.5], 10);
@@ -94,8 +94,15 @@ function renderMapTab() {
   const m = mapFor('map-main');
   const mode = S.settings.mapMode, rides = Object.values(S.activities), routes = Object.values(S.routes);
   m.layers.clearLayers();
-  if (mode === 'ridden') for (const a of rides) { if (S.selectedTour !== a.id) { const c = Seg.coords({ polyline: a.polyline, start: [0, 0], end: [0, 0] }); if (c.length > 2) L.polyline(c, { color: ACCENT, weight: 2, opacity: 0.35, interactive: false }).addTo(m.layers); } }
-  else for (const r of routes) { if (S.routeFilter !== r.id) { const c = Seg.coords({ polyline: r.polyline, start: [0, 0], end: [0, 0] }); if (c.length > 2) L.polyline(c, { color: PLANNED, weight: 2, opacity: 0.7, dashArray: '5 4', interactive: false }).addTo(m.layers); } }
+  // Alle Touren der Ebene: Linie + anklickbarer Startpunkt (bleibt bei jedem Zoom sichtbar).
+  const pool = mode === 'ridden' ? rides : routes, col = mode === 'ridden' ? ACCENT : PLANNED;
+  for (const t of pool) {
+    if (S.selectedTour === t.id || S.routeFilter === t.id) continue;
+    const c = Seg.coords({ polyline: t.polyline, start: [0, 0], end: [0, 0] }); if (c.length <= 2) continue;
+    L.polyline(c, mode === 'ridden' ? { color: col, weight: 2, opacity: 0.35, interactive: false } : { color: col, weight: 2, opacity: 0.7, dashArray: '5 4', interactive: false }).addTo(m.layers);
+    L.circleMarker(c[0], { radius: 5, color: '#121212', weight: 1, fillColor: col, fillOpacity: 0.9 })
+      .on('click', () => mode === 'ridden' ? S.selectTour(t.id) : S.selectRoute(t.id)).bindTooltip(t.name, { direction: 'top', opacity: 0.9 }).addTo(m.layers);
+  }
   if (S.context) {
     const { coords } = S.contextTrack();
     if (coords.length > 1) {
@@ -120,7 +127,7 @@ function renderMapTab() {
   const empty = mode === 'planned' ? !routes.length : !rides.length;
   const name = S.contextName;
   $('#map-top').innerHTML = `<div class="seg-ctl"><button class="${mode === 'planned' ? 'on' : ''}" data-act="mapMode" data-arg="planned">Geplante Routen</button><button class="${mode === 'ridden' ? 'on' : ''}" data-act="mapMode" data-arg="ridden">Gefahrene Touren</button></div>
-    <div class="map-btns"><button class="iconbtn" data-act="styleCycle" title="Kartenstil">▦</button><button class="iconbtn" data-act="locate" title="Standort">◎</button><button class="iconbtn" data-act="tourList" title="Liste">☰</button></div>`;
+    <div class="map-btns"><button class="iconbtn" data-act="styleCycle" title="Kartenstil">▦</button><button class="iconbtn" data-act="locate" title="Standort">◎</button><button class="iconbtn" data-act="fitAll" title="Alle Touren">⤢</button><button class="iconbtn" data-act="tourList" title="Liste">☰</button></div>`;
   let panel = '';
   if (empty) panel = `<div class="chooser"><div class="section">${mode === 'planned' ? 'Geplante Routen' : 'Gefahrene Touren'}</div><p class="hint">${mode === 'planned' ? 'Lädt die Liste deiner bei Strava gespeicherten Routen (1–2 Calls). Segmente je Route beim Antippen.' : 'Lädt deine Fahrten mit Track (200 je Call, keine Efforts). Segmente je Tour beim Antippen.'}</p>
     <button class="btn prominent" data-act="${mode === 'planned' ? 'loadRoutes' : 'loadActivityMap'}">${mode === 'planned' ? 'Geplante Routen laden' : 'Gefahrene Touren laden'}</button>
@@ -134,7 +141,7 @@ function renderMapTab() {
       <button class="iconbtn" data-act="go" data-arg="segments" title="Liste">≡</button><button class="iconbtn" data-act="selectAll" title="Alle zur Route">＋</button><button class="iconbtn" data-act="clearContext" title="Schließen">✕</button></div>
       ${S.contextMissingRecords ? `<button class="btn prominent" data-act="loadRecords">KOMs laden für ${Math.min(40, S.contextMissingRecords)} Segmente → Chancen anzeigen</button>` : ''}
       <div class="chips">${ordered.map(([n, s, f]) => `<span class="chip ${S.selected.has(s.id) ? 'sel' : ''}"><button data-act="toggle" data-arg="${s.id}">${S.selected.has(s.id) ? '●' : '○'}</button><button data-act="go" data-arg="seg/${s.id}"><i style="background:${f.hasChance ? Fmt.chance(f.score) : LINE}"></i>${n}. ${esc(s.name)}${f.hasChance ? ` <b style="color:${Fmt.chance(f.score)}">${Math.round(f.score * 100)} %</b>` : ''}${Seg.knownRank(s) ? ` <b class="rank">#${Seg.knownRank(s)}</b>` : ''}${s.starred ? ' ★' : ''}</button></span>`).join('') || '<span class="hint">Keine befahrbaren Segmente auf dieser Tour.</span>'}</div>`;
-  } else panel = `<div class="hint">${mode === 'planned' ? `${routes.length} geplante Routen` : `${rides.length} gefahrene Touren`} · Tour antippen oder Liste öffnen.</div>${S.info ? `<div class="hint">${esc(S.info)}</div>` : ''}`;
+  } else panel = `<div class="hint">${mode === 'planned' ? `${routes.length} geplante Routen` : `${rides.length} gefahrene Touren`} · Punkt antippen, ⤢ zeigt alle, ☰ öffnet die Liste.</div>${S.info ? `<div class="hint">${esc(S.info)}</div>` : ''}`;
   $('#map-panel').innerHTML = panel;
   if (!m._tapBound) { m._tapBound = true; m.on('click', e => handleMapTap([e.latlng.lat, e.latlng.lng], m)); }
   m.off('moveend'); m.on('moveend', () => {}); 
@@ -433,6 +440,7 @@ const actions = {
   styleCycle() { const i = MAP_STYLES.findIndex(x => x[0] === S.settings.mapStyle); S.setSetting('mapStyle', MAP_STYLES[(i + 1) % MAP_STYLES.length][0]); },
   locate() { S.requestLocation(); const m = maps['map-main']; if (m && S.location) m.setView(S.location, 11); },
   tourList() { sheetHtml = tourListSheet(); showSheet(); },
+  fitAll() { const m = maps['map-main']; if (m) { m._fitAll = true; S.clearContext(); } },
   closeSheet() { sheetHtml = null; showSheet(); },
   loadRoutes() { S.loadRouteList().then(() => { sheetHtml = sheetHtml && tourListSheet(); showSheet(); if (maps['map-main']) { maps['map-main']._fitAll = true; render(); } }); },
   loadActivityMap() { S.loadActivityMap().then(() => { sheetHtml = sheetHtml && tourListSheet(); showSheet(); if (maps['map-main']) { maps['map-main']._fitAll = true; render(); } }); },
