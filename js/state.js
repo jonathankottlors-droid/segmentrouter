@@ -253,17 +253,19 @@ export class AppState {
       await this.ensureAthlete();
       const all = [];
       for (let page = 1; page <= 10; page++) { this.setBusy(`Routenliste… Seite ${page}`); const b = await API.routes(this.settings.athleteId, page, 200); if (!b.length) break; all.push(...b); }
-      const before = new Set(Object.keys(this.routes).map(Number));
+      // Routen-IDs sind 64-bit – als Zahl in JS ungenau (→ 404). Strava liefert dafür id_str; immer als String führen.
+      const before = new Set(Object.keys(this.routes));
+      const live = new Set();
       for (const r of all) {
+        const rid = r.id_str || String(r.id); live.add(rid);
         const poly = r.map?.polyline || r.map?.summary_polyline || null;
-        const ex = this.routes[r.id];
-        if (ex) { ex.name = r.name; ex.distance = r.distance; ex.elevationGain = r.elevation_gain ?? ex.elevationGain; if (poly && poly !== ex.polyline) { ex.polyline = poly; ex.segmentIds = []; ex.loaded = null; delete this.placementCache['r' + r.id]; delete this.trackCache['r' + r.id]; } }
-        else this.routes[r.id] = { id: r.id, name: r.name, distance: r.distance, elevationGain: r.elevation_gain || 0, polyline: poly, segmentIds: [], loaded: null };
-        if (r.segments?.length && !this.routes[r.id].loaded) this.applyRouteSegments(r.segments, r.id);
+        const ex = this.routes[rid];
+        if (ex) { ex.id = rid; ex.name = r.name; ex.distance = r.distance; ex.elevationGain = r.elevation_gain ?? ex.elevationGain; if (poly && poly !== ex.polyline) { ex.polyline = poly; ex.segmentIds = []; ex.loaded = null; delete this.placementCache['r' + rid]; delete this.trackCache['r' + rid]; } }
+        else this.routes[rid] = { id: rid, name: r.name, distance: r.distance, elevationGain: r.elevation_gain || 0, polyline: poly, segmentIds: [], loaded: null };
+        if (r.segments?.length && !this.routes[rid].loaded) this.applyRouteSegments(r.segments, rid);
       }
-      const live = new Set(all.map(r => r.id));
       const removed = [...before].filter(id => !live.has(id)).length, added = [...live].filter(id => !before.has(id)).length;
-      for (const id of Object.keys(this.routes)) if (!live.has(Number(id))) delete this.routes[id];
+      for (const id of Object.keys(this.routes)) if (!live.has(id)) delete this.routes[id];
       this.placementCache = {}; this.trackCache = {};
       if (this.routeFilter != null && !this.routes[this.routeFilter]) this.routeFilter = null;
       if (!all.length) { this.info = 'Keine eigenen Routen bei Strava. Gespeicherte Routen anderer Athleten liefert die API nicht.'; return; }

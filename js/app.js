@@ -444,7 +444,7 @@ const actions = {
   closeSheet() { sheetHtml = null; showSheet(); },
   loadRoutes() { S.loadRouteList().then(() => { sheetHtml = sheetHtml && tourListSheet(); showSheet(); if (maps['map-main']) { maps['map-main']._fitAll = true; render(); } }); },
   loadActivityMap() { S.loadActivityMap().then(() => { sheetHtml = sheetHtml && tourListSheet(); showSheet(); if (maps['map-main']) { maps['map-main']._fitAll = true; render(); } }); },
-  selectRoute(id) { sheetHtml = null; showSheet(); S.selectRoute(Number(id)); setTimeout(frameContext, 100); },
+  selectRoute(id) { sheetHtml = null; showSheet(); S.selectRoute(String(id)); setTimeout(frameContext, 100); },
   selectTour(id) { sheetHtml = null; showSheet(); S.selectTour(Number(id)); setTimeout(frameContext, 100); },
   clearContext() { S.clearContext(); },
   selectAll() { for (const s of S.contextSegments) if (!S.selected.has(s.id)) S.toggle(s.id); },
