@@ -29,7 +29,7 @@ export const Auth = {
 
   login() {
     const c = this.cfg;
-    const u = new URL('https://www.strava.com/oauth/authorize');
+    const u = new URL(/iPhone|iPad|Android/i.test(navigator.userAgent) ? 'https://www.strava.com/oauth/mobile/authorize' : 'https://www.strava.com/oauth/authorize');
     u.search = new URLSearchParams({
       client_id: c.clientId, redirect_uri: this.redirectUri(), response_type: 'code',
       approval_prompt: 'auto', scope: SCOPES,
